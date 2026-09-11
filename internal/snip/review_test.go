@@ -33,9 +33,9 @@ func TestWrapperCapturedStdoutStillUsesFzf(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
-	input, err := os.Open("/dev/null") // character-device input with captured stdout, as in $(command snip)
+	input, err := openPTYForTest()
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("PTY unavailable: %v", err)
 	}
 	defer input.Close()
 	captured, errOut := new(bytes.Buffer), new(bytes.Buffer)
@@ -53,6 +53,18 @@ func TestWrapperCapturedStdoutStillUsesFzf(t *testing.T) {
 	}
 	if !strings.HasSuffix(strings.TrimSpace(captured.String()), filepath.Join("github.com", "alice", "useful-json")) {
 		t.Fatalf("unexpected wrapper output %q", captured.String())
+	}
+}
+
+func TestDevNullIsNotInteractive(t *testing.T) {
+	input, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	app := NewApp(input, io.Discard, io.Discard)
+	if app.IsTTY() {
+		t.Fatal("/dev/null was incorrectly treated as a terminal")
 	}
 }
 
@@ -100,8 +112,8 @@ func TestReadablePathAndIDSuffixOnlyOnCollision(t *testing.T) {
 
 func TestPathFallbacksAndComponentSanitization(t *testing.T) {
 	root := "/tmp/root"
-	withFile := Item{Source: Source{Host: "Git.Example.COM", Account: "Alice/Dev"}, ID: "42", Files: []string{"hello.go"}}
-	if got := filepath.Join(root, safeComponent(withFile.Host), safeComponent(withFile.Account), slug(withFile.Name())); got != "/tmp/root/git.example.com/alice-dev/hello" {
+	withFile := Item{Source: Source{Host: "Git.Example.COM", Account: "Alice/Dev"}, ID: "42", Files: []string{"dir/example.go"}}
+	if got := filepath.Join(root, safeComponent(withFile.Host), safeComponent(withFile.Account), slug(withFile.Name())); got != "/tmp/root/git.example.com/alice-dev/example" {
 		t.Fatalf("filename path: %s", got)
 	}
 	withoutName := Item{Source: withFile.Source, ID: "42"}
@@ -202,6 +214,69 @@ func TestUnrelatedGitOriginIsNeverUpdatedOrReturned(t *testing.T) {
 	}
 }
 
+func TestInventoryRejectsCopiedMetadataWithWrongOrigin(t *testing.T) {
+	runner := &fakeRunner{outputFn: func(name string, args []string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		if name == "git" && strings.Contains(joined, "rev-parse") {
+			return []byte("true\n"), nil
+		}
+		if name == "git" && strings.Contains(joined, "remote get-url") {
+			return []byte("https://gist.github.com/a-different-id.git\n"), nil
+		}
+		return githubFixture(name, args)
+	}}
+	app, out, _ := newTestApp(t, runner)
+	makeLocal(t, Item{Source: Source{Provider: "github", Host: "github.com", Account: "alice"}, ID: "abcdef123456", Description: "Useful JSON", CloneURL: "https://gist.github.com/abcdef123456.git"}, "copied")
+	if err := app.Run(context.Background(), []string{"list"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "\tno\t") || strings.Contains(out.String(), "\tyes\t") {
+		t.Fatalf("invalid clone was claimed as cloned: %q", out.String())
+	}
+}
+
+func TestInventoryRejectsMetadataInNonRepositoryDirectory(t *testing.T) {
+	runner := &fakeRunner{outputFn: func(name string, args []string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		if name == "git" && strings.Contains(joined, "rev-parse") {
+			return []byte("false\n"), nil
+		}
+		return githubFixture(name, args)
+	}}
+	app, out, _ := newTestApp(t, runner)
+	makeLocal(t, Item{Source: Source{Provider: "github", Host: "github.com", Account: "alice"}, ID: "abcdef123456", Description: "Useful JSON", CloneURL: "https://gist.github.com/abcdef123456.git"}, "not-a-repository")
+	if err := app.Run(context.Background(), []string{"list"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "\tno\t") || strings.Contains(out.String(), "\tyes\t") {
+		t.Fatalf("non-repository metadata was claimed as cloned: %q", out.String())
+	}
+}
+
+func TestOfflinePickerDoesNotOfferInvalidLocalMetadata(t *testing.T) {
+	runner := &fakeRunner{outputFn: func(name string, args []string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		switch {
+		case name == "git" && strings.Contains(joined, "rev-parse"):
+			return []byte("true\n"), nil
+		case name == "git" && strings.Contains(joined, "remote get-url"):
+			return []byte("https://gist.github.com/wrong.git\n"), nil
+		default:
+			return nil, errors.New("network unavailable")
+		}
+	}}
+	app, _, _ := newTestApp(t, runner)
+	app.IsTTY = func() bool { return true }
+	makeLocal(t, Item{Source: Source{Provider: "github", Host: "github.com", Account: "alice"}, ID: "deadbeef", Description: "copied", CloneURL: "https://gist.github.com/deadbeef.git"}, "copied")
+	err := app.Run(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "no snippets found") {
+		t.Fatalf("unexpected result: %v", err)
+	}
+	if runner.count("fzf", "") != 0 {
+		t.Fatal("picker received an invalid local clone")
+	}
+}
+
 func TestFzfCandidateFieldsCannotForgeRecords(t *testing.T) {
 	var feed string
 	runner := &fakeRunner{runFn: func(in io.Reader, out, _ io.Writer, name string, _ []string) error {
@@ -264,10 +339,13 @@ func TestReleaseWorkflowPublishesTaggedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(workflow)
-	for _, required := range []string{"tags:", "'v*'", "contents: write", "goreleaser-action@v6", "release --clean"} {
+	for _, required := range []string{"tags:", "'v*'", "contents: write", "goreleaser-action@v6", "release --clean", "PACKAGES_DISPATCH_TOKEN", "getReleaseByTag", "createDispatchEvent", "repo: 'packages'", "event_type: 'snip-release-published'", "source_commit: context.sha", "release_id: String(release.id)", "checksums_asset_id: String(checksums.id)", "checksums_digest: checksums.digest", "checksums.txt", ".deb", ".pkg.tar.zst"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("release workflow omits %q", required)
 		}
+	}
+	if strings.Index(text, "goreleaser-action@v6") > strings.Index(text, "createDispatchEvent") {
+		t.Error("packages dispatch must happen only after GoReleaser succeeds")
 	}
 	releaseConfig, err := os.ReadFile(filepath.Join("..", "..", ".goreleaser.yaml"))
 	if err != nil {

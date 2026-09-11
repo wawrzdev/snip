@@ -179,8 +179,14 @@ func TestExistingClonePathStaysStableWhenDescriptionChanges(t *testing.T) {
 }
 
 func TestOfflineShowsOnlyLocalClones(t *testing.T) {
-	runner := &fakeRunner{outputFn: func(_ string, args []string) ([]byte, error) {
+	runner := &fakeRunner{outputFn: func(name string, args []string) ([]byte, error) {
 		joined := strings.Join(args, " ")
+		if name == "git" && strings.Contains(joined, "rev-parse") {
+			return []byte("true\n"), nil
+		}
+		if name == "git" && strings.Contains(joined, "remote get-url") {
+			return []byte("https://gist.github.com/deadbeef.git\n"), nil
+		}
 		if strings.HasPrefix(joined, "auth status") {
 			return []byte("ok"), nil
 		}

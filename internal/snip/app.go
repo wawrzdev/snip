@@ -38,8 +38,7 @@ func NewApp(in io.Reader, out, errOut io.Writer) *App {
 			if !inOK {
 				return false
 			}
-			inInfo, inErr := inFile.Stat()
-			return inErr == nil && inInfo.Mode()&os.ModeCharDevice != 0
+			return isTerminal(inFile)
 		},
 		LookPath:   exec.LookPath,
 		LoadConfig: loadConfig,
@@ -234,7 +233,9 @@ func (a *App) inventory(ctx context.Context, cfg Config, providers map[string]Pr
 	for _, entry := range configured {
 		eligible[strings.ToLower(entry.cfg.Host)] = entry.name
 	}
-	locals, err := scanLocal(root, eligible)
+	locals, err := scanLocal(root, eligible, func(path string, item Item) error {
+		return a.validateLocal(ctx, path, item)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +579,16 @@ func (a *App) availablePath(ctx context.Context, root string, item Item) (string
 }
 
 func (a *App) verifyLocal(ctx context.Context, path string, item Item) error {
+	if err := a.validateLocal(ctx, path, item); err != nil {
+		return err
+	}
+	if err := writeMetadata(path, item); err != nil {
+		return fmt.Errorf("record clone identity: %w", err)
+	}
+	return nil
+}
+
+func (a *App) validateLocal(ctx context.Context, path string, item Item) error {
 	info, err := os.Stat(filepath.Join(path, ".git"))
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("%s is not a verified Git clone", path)
@@ -596,9 +607,6 @@ func (a *App) verifyLocal(ctx context.Context, path string, item Item) error {
 	}
 	if local, err := readMetadata(path); err == nil && itemKey(local) != itemKey(item) {
 		return fmt.Errorf("%s metadata belongs to another remote", path)
-	}
-	if err := writeMetadata(path, item); err != nil {
-		return fmt.Errorf("record clone identity: %w", err)
 	}
 	return nil
 }

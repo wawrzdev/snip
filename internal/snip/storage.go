@@ -59,7 +59,7 @@ func readMetadata(path string) (Item, error) {
 	return metadata.item(path), nil
 }
 
-func scanLocal(root string, eligible map[string]string) ([]Item, error) {
+func scanLocal(root string, eligible map[string]string, verify func(string, Item) error) ([]Item, error) {
 	hosts, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -100,6 +100,9 @@ func scanLocal(root string, eligible map[string]string) ([]Item, error) {
 					continue
 				}
 				if safeComponent(item.Host) != hostEntry.Name() || safeComponent(item.Account) != accountEntry.Name() {
+					continue
+				}
+				if verify != nil && verify(path, item) != nil {
 					continue
 				}
 				items = append(items, item)

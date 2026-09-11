@@ -157,5 +157,14 @@ go test -race ./...
 
 Release builds are described by `.goreleaser.yaml`. The test workflow only tests. Pushing a `v*`
 tag runs the separate release workflow, which publishes checksummed macOS/Linux archives plus
-Debian and Arch packages to that tag's GitHub Release. Feed updates in `wawrzdev/packages` remain a
-separate distribution step.
+Debian and Arch packages to that tag's GitHub Release. After the release is available, the workflow
+sends a `snip-release-published` repository dispatch to `wawrzdev/packages`. Its payload identifies
+the source commit, release and checksum asset by immutable IDs and includes the checksum digest.
+
+The release repository must define `PACKAGES_DISPATCH_TOKEN` as a fine-grained personal access
+token scoped only to `wawrzdev/packages`, with repository Contents write permission (required by
+GitHub's repository-dispatch endpoint). The normal workflow token remains responsible for the snip
+release itself. If the secret is absent, the release lacks required artifacts, or dispatch fails,
+the published release remains available and the workflow fails visibly; fix the cause and rerun the
+failed job to deliver the same release metadata. The packages repository owns feed construction and
+signing.

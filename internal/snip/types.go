@@ -33,7 +33,8 @@ func (i Item) Name() string {
 		return i.Title
 	}
 	if len(i.Files) > 0 {
-		return strings.TrimSuffix(i.Files[0], filepath.Ext(i.Files[0]))
+		base := filepath.Base(i.Files[0])
+		return strings.TrimSuffix(base, filepath.Ext(base))
 	}
 	return "snippet-" + i.ID
 }
