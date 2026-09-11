@@ -1,0 +1,4 @@
+/dist/
+/snip
+*.test
+*.out

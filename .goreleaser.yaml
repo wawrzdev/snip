@@ -1,0 +1,61 @@
+version: 2
+
+project_name: snip
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: snip
+    main: ./cmd/snip
+    binary: snip
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: archives
+    ids: [snip]
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+
+nfpms:
+  - id: native-packages
+    ids: [snip]
+    package_name: snip
+    vendor: wawrzdev
+    homepage: https://github.com/wawrzdev/snip
+    maintainer: Kris Wawrzyniak
+    description: Manage GitHub gists and account-level GitLab snippets as local Git clones.
+    license: MIT
+    formats:
+      - deb
+      - archlinux
+    bindir: /usr/bin
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+release:
+  github:
+    owner: wawrzdev
+    name: snip
