@@ -18,6 +18,23 @@ type cliProvider struct {
 	runner Runner
 }
 
+type authError struct{ message string }
+
+func (e authError) Error() string { return e.message }
+
+type offlineError struct{ err error }
+
+func (e offlineError) Error() string { return e.err.Error() }
+func (e offlineError) Unwrap() error { return e.err }
+
+func providerAuthError(provider, host string) error {
+	guidance := "gh auth login --hostname " + host
+	if provider == "gitlab" {
+		guidance = "glab auth login --hostname " + host
+	}
+	return authError{message: fmt.Sprintf("%s authentication is required; run `%s`", provider, guidance)}
+}
+
 type gitLabFile struct {
 	Path string `json:"path"`
 }
@@ -44,15 +61,17 @@ func (p cliProvider) Source(ctx context.Context, cfg providerConfig) (Source, er
 	}
 	cli := map[string]string{"github": "gh", "gitlab": "glab"}[p.kind]
 	if _, err := p.runner.Output(ctx, cli, authArgs...); err != nil {
-		guidance := "gh auth login --hostname " + cfg.Host
-		if p.kind == "gitlab" {
-			guidance = "glab auth login --hostname " + cfg.Host
+		if looksLikeAuthFailure(err) {
+			return Source{}, providerAuthError(p.kind, cfg.Host)
 		}
-		return Source{}, fmt.Errorf("%s authentication is required; run `%s`", p.kind, guidance)
+		return Source{}, offlineError{err: fmt.Errorf("resolve %s authentication on %s: %w", p.kind, cfg.Host, err)}
 	}
 	out, err := p.runner.Output(ctx, cli, userArgs...)
 	if err != nil {
-		return Source{}, fmt.Errorf("resolve %s account on %s: %w", p.kind, cfg.Host, err)
+		if looksLikeAuthFailure(err) {
+			return Source{}, providerAuthError(p.kind, cfg.Host)
+		}
+		return Source{}, offlineError{err: fmt.Errorf("resolve %s account on %s: %w", p.kind, cfg.Host, err)}
 	}
 	var user struct{ Login, Username string }
 	if err := json.Unmarshal(out, &user); err != nil {
@@ -66,6 +85,16 @@ func (p cliProvider) Source(ctx context.Context, cfg providerConfig) (Source, er
 		return Source{}, fmt.Errorf("%s returned an empty account name", cli)
 	}
 	return Source{Provider: p.kind, Host: cfg.Host, Account: account}, nil
+}
+
+func looksLikeAuthFailure(err error) bool {
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{"not logged", "not authenticated", "authentication", "unauthorized", "invalid token", "is invalid", "no token", "401", "login required"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p cliProvider) List(ctx context.Context, source Source) ([]Item, error) {
@@ -229,26 +258,26 @@ func firstNonempty(values ...string) string {
 	return "snippet"
 }
 
-func parseExplicitID(value string) (provider, id string) {
+func parseExplicitID(value string) (provider, host, id string) {
 	u, err := url.Parse(value)
 	if err == nil && u.Host != "" {
 		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 		if u.Host == "gist.github.com" && len(parts) > 0 {
-			return "github", parts[len(parts)-1]
+			return "github", "github.com", parts[len(parts)-1]
 		}
 		for i := range parts {
 			if parts[i] == "snippets" && i+1 < len(parts) {
-				return "gitlab", strings.TrimSuffix(parts[i+1], ".git")
+				return "gitlab", strings.ToLower(u.Hostname()), strings.TrimSuffix(parts[i+1], ".git")
 			}
 		}
 	}
 	if _, err := strconv.ParseUint(value, 10, 64); err == nil {
-		return "gitlab", value
+		return "gitlab", "", value
 	}
 	if len(value) >= 8 && allHex(value) {
-		return "github", value
+		return "github", "", value
 	}
-	return "", ""
+	return "", "", ""
 }
 
 func allHex(s string) bool {

@@ -58,17 +58,24 @@ CLI session.
 Clone paths have this form:
 
 ```text
-~/snip/<provider>/<account>/<stable-id>-<slug>
+~/snip/<host>/<account>/<readable-name>
 ```
 
-The remote ID is the identity. Once a clone exists, its directory stays unchanged when a remote
-description or title changes. Configure Git's conditional identity includes for these GitHub and
-work GitLab paths; `snip` does not copy names or email addresses into repositories.
+The readable name comes from description/title, then the first filename stem, then
+`snippet-<id>`. An ID suffix is added only when that name collides. Host and account components are
+sanitized. The remote ID is recorded under `.git/snip.json` as canonical identity, and the clone's
+`origin` must match that provider, host, and ID before `snip` returns or updates it. Once a clone
+exists, its directory stays unchanged when a remote description or title changes. Configure Git's
+conditional identity includes for these GitHub and work GitLab paths; `snip` does not copy names or
+email addresses into repositories.
 
-Failed post-creation clones are recorded below `$XDG_STATE_HOME/snip/pending` (falling back to
-`~/.local/state/snip/pending`). Repeating the same command retries that remote instead of creating
-a duplicate. Content and credentials are not stored there; the record contains remote identity and
-URLs. It is removed after a verified clone.
+Creation intents are recorded below `$XDG_STATE_HOME/snip/pending` (falling back to
+`~/.local/state/snip/pending`) before provider mutation. The mode-0600 record includes the captured
+content so an editor-based retry does not reopen the editor. It moves atomically from `prepared` to
+`creating` to `created`. A `created` intent retries only its known remote. An interrupted or
+unrecordable provider result remains `creating` and blocks another creation with a recovery path;
+inspect the provider and that intent before manually removing or repairing it. The record is
+removed after a verified clone.
 
 ## Commands
 
@@ -121,10 +128,12 @@ snip() {
 }
 ```
 
-When provider listing is offline after authentication has been resolved, `snip` prints a short
-notice and discovers current local clones only. It does not retain a cache of remote-only items.
-Missing authentication is a hard error with provider-specific login guidance and never falls back
-to another account or provider.
+When authentication, account lookup, or provider listing fails because the network is unavailable,
+`snip` prints a short notice and discovers metadata-backed local clones without requiring an online
+account lookup. Explicit IDs can resolve those verified clones offline. It does not retain a cache
+of remote-only items. A distinguishable missing-authentication response is a hard error with
+provider-specific login guidance and never falls back to another account or provider. Explicit
+GitLab URLs must use the configured GitLab host.
 
 `new` opens an empty temporary file in `$EDITOR` and cancels on editor error or blank content.
 `paste` requires a safe basename and reads the clipboard. `file` accepts one readable regular file,
@@ -146,6 +155,7 @@ go vet ./...
 go test -race ./...
 ```
 
-Release builds are described by `.goreleaser.yaml`. Tags may produce checksummed macOS and Linux
-archives plus Debian and Arch packages. The included GitHub Actions workflow runs tests only; it
-does not publish, tag, or alter repository settings.
+Release builds are described by `.goreleaser.yaml`. The test workflow only tests. Pushing a `v*`
+tag runs the separate release workflow, which publishes checksummed macOS/Linux archives plus
+Debian and Arch packages to that tag's GitHub Release. Feed updates in `wawrzdev/packages` remain a
+separate distribution step.

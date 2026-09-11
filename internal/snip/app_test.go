@@ -3,6 +3,7 @@ package snip
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -75,6 +76,11 @@ func githubFixture(name string, args []string) ([]byte, error) {
 	switch {
 	case name == "git" && strings.Contains(joined, "rev-parse --is-inside-work-tree"):
 		return []byte("true\n"), nil
+	case name == "git" && strings.Contains(joined, "remote get-url origin"):
+		if strings.Contains(joined, "cafebabe1234") {
+			return []byte("https://gist.github.com/cafebabe1234.git\n"), nil
+		}
+		return []byte("https://gist.github.com/abcdef123456.git\n"), nil
 	case name == "gh" && strings.HasPrefix(joined, "auth status"):
 		return []byte("ok"), nil
 	case name == "gh" && joined == "api --hostname github.com user":
@@ -84,6 +90,20 @@ func githubFixture(name string, args []string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unexpected command: %s %s", name, joined)
 	}
+}
+
+func makeLocal(t *testing.T, item Item, name string) string {
+	t.Helper()
+	home, _ := os.UserHomeDir()
+	path := filepath.Join(home, "snip", safeComponent(item.Host), safeComponent(item.Account), name)
+	if err := os.MkdirAll(filepath.Join(path, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	item.LocalPath = path
+	if err := writeMetadata(path, item); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestHelpLocksApprovedSurface(t *testing.T) {
@@ -135,7 +155,7 @@ func TestBrowseUniquePartialClonesAndPrintsVerifiedPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := strings.TrimSpace(out.String())
-	if !strings.HasSuffix(path, filepath.Join("snip", "github", "alice", "abcdef123456-useful-json")) {
+	if !strings.HasSuffix(path, filepath.Join("snip", "github.com", "alice", "useful-json")) {
 		t.Fatalf("unexpected path %s", path)
 	}
 	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
@@ -146,11 +166,7 @@ func TestBrowseUniquePartialClonesAndPrintsVerifiedPath(t *testing.T) {
 func TestExistingClonePathStaysStableWhenDescriptionChanges(t *testing.T) {
 	runner := &fakeRunner{outputFn: githubFixture}
 	app, out, _ := newTestApp(t, runner)
-	home, _ := os.UserHomeDir()
-	existing := filepath.Join(home, "snip", "github", "alice", "abcdef123456-old-name")
-	if err := os.MkdirAll(filepath.Join(existing, ".git"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	existing := makeLocal(t, Item{Source: Source{Provider: "github", Host: "github.com", Account: "alice"}, ID: "abcdef123456", Description: "Old name", CloneURL: "https://gist.github.com/abcdef123456.git"}, "old-name")
 	if err := app.Run(context.Background(), []string{"get", "Useful JSON"}); err != nil {
 		t.Fatal(err)
 	}
@@ -174,10 +190,7 @@ func TestOfflineShowsOnlyLocalClones(t *testing.T) {
 		return nil, errors.New("offline")
 	}}
 	app, out, errOut := newTestApp(t, runner)
-	home, _ := os.UserHomeDir()
-	if err := os.MkdirAll(filepath.Join(home, "snip", "github", "alice", "deadbeef-local-tool", ".git"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	makeLocal(t, Item{Source: Source{Provider: "github", Host: "github.com", Account: "alice"}, ID: "deadbeef", Description: "local tool", CloneURL: "https://gist.github.com/deadbeef.git"}, "local-tool")
 	if err := app.Run(context.Background(), []string{"list"}); err != nil {
 		t.Fatal(err)
 	}
@@ -232,6 +245,8 @@ func TestFileCreationPersistsIdentityBeforeCloneAndRetriesWithoutDuplicate(t *te
 		switch {
 		case name == "git" && strings.Contains(joined, "rev-parse --is-inside-work-tree"):
 			return []byte("true\n"), nil
+		case name == "git" && strings.Contains(joined, "remote get-url origin"):
+			return []byte("https://gist.github.com/cafebabe1234.git\n"), nil
 		case name == "gh" && strings.HasPrefix(joined, "auth status"):
 			return []byte("ok"), nil
 		case name == "gh" && joined == "api --hostname github.com user":
@@ -262,6 +277,20 @@ func TestFileCreationPersistsIdentityBeforeCloneAndRetriesWithoutDuplicate(t *te
 	if err := app.Run(context.Background(), args); err == nil || !strings.Contains(err.Error(), "remote retained") {
 		t.Fatalf("first run: %v", err)
 	}
+	stateDir := filepath.Join(os.Getenv("XDG_STATE_HOME"), "snip", "pending")
+	entries, err := os.ReadDir(stateDir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("pending intent missing: %v, %v", entries, err)
+	}
+	info, err := entries[0].Info()
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("pending intent mode: %v, %v", info, err)
+	}
+	intentData, err := os.ReadFile(filepath.Join(stateDir, entries[0].Name()))
+	var saved creationIntent
+	if err != nil || json.Unmarshal(intentData, &saved) != nil || string(saved.Request.Content) != "package demo\n" || saved.Status != "created" {
+		t.Fatalf("pending intent incomplete: %s (%v)", intentData, err)
+	}
 	if err := app.Run(context.Background(), args); err != nil {
 		t.Fatalf("retry: %v", err)
 	}
@@ -271,7 +300,7 @@ func TestFileCreationPersistsIdentityBeforeCloneAndRetriesWithoutDuplicate(t *te
 	if got, _ := os.ReadFile(source); string(got) != "package demo\n" {
 		t.Fatalf("source changed: %q", got)
 	}
-	if !strings.Contains(out.String(), "cafebabe1234-demo") {
+	if !strings.Contains(out.String(), filepath.Join("github.com", "alice", "demo")) {
 		t.Fatalf("missing canonical path: %s", out.String())
 	}
 	runner.mu.Lock()
@@ -308,11 +337,7 @@ func TestUpdateFailureReportsPreservedChanges(t *testing.T) {
 		return nil
 	}}
 	app, _, _ := newTestApp(t, runner)
-	home, _ := os.UserHomeDir()
-	existing := filepath.Join(home, "snip", "github", "alice", "abcdef123456-useful-json")
-	if err := os.MkdirAll(filepath.Join(existing, ".git"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	makeLocal(t, Item{Source: Source{Provider: "github", Host: "github.com", Account: "alice"}, ID: "abcdef123456", Description: "Useful JSON", CloneURL: "https://gist.github.com/abcdef123456.git"}, "useful-json")
 	err := app.Run(context.Background(), []string{"get", "--update", "Useful JSON"})
 	if err == nil || !strings.Contains(err.Error(), "local changes were preserved") {
 		t.Fatalf("unexpected error: %v", err)

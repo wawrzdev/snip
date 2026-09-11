@@ -1,6 +1,10 @@
 package snip
 
-import "context"
+import (
+	"context"
+	"path/filepath"
+	"strings"
+)
 
 type Source struct {
 	Provider string
@@ -22,14 +26,14 @@ type Item struct {
 }
 
 func (i Item) Name() string {
-	if i.Title != "" {
-		return i.Title
-	}
 	if i.Description != "" {
 		return i.Description
 	}
+	if i.Title != "" {
+		return i.Title
+	}
 	if len(i.Files) > 0 {
-		return i.Files[0]
+		return strings.TrimSuffix(i.Files[0], filepath.Ext(i.Files[0]))
 	}
 	return "snippet-" + i.ID
 }

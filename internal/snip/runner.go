@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 )
 
 type Runner interface {
@@ -14,12 +15,21 @@ type Runner interface {
 
 type execRunner struct{}
 
+type commandError struct {
+	Command string
+	Detail  string
+}
+
+func (e commandError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Command, strings.TrimSpace(e.Detail))
+}
+
 func (execRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exit, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("%s: %s", name, string(exit.Stderr))
+			return nil, commandError{Command: name, Detail: string(exit.Stderr)}
 		}
 		return nil, err
 	}

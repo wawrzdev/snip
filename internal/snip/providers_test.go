@@ -45,16 +45,16 @@ func TestGitLabListRejectsProjectSnippets(t *testing.T) {
 }
 
 func TestExplicitIdentifiers(t *testing.T) {
-	tests := map[string][2]string{
-		"https://gist.github.com/alice/abcdef123456": {"github", "abcdef123456"},
-		"https://git.example/-/snippets/42":          {"gitlab", "42"},
-		"42":                                         {"gitlab", "42"},
-		"abcdef123456":                               {"github", "abcdef123456"},
+	tests := map[string][3]string{
+		"https://gist.github.com/alice/abcdef123456": {"github", "github.com", "abcdef123456"},
+		"https://git.example/-/snippets/42":          {"gitlab", "git.example", "42"},
+		"42":                                         {"gitlab", "", "42"},
+		"abcdef123456":                               {"github", "", "abcdef123456"},
 	}
 	for input, want := range tests {
-		provider, id := parseExplicitID(input)
-		if provider != want[0] || id != want[1] {
-			t.Errorf("%q: got %q/%q want %q/%q", input, provider, id, want[0], want[1])
+		provider, host, id := parseExplicitID(input)
+		if provider != want[0] || host != want[1] || id != want[2] {
+			t.Errorf("%q: got %q/%q/%q want %q/%q/%q", input, provider, host, id, want[0], want[1], want[2])
 		}
 	}
 }
