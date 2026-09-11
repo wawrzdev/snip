@@ -25,6 +25,10 @@ Runtime tools depend on the operation:
 - `pbpaste`, `wl-paste`, or `xclip` for `snip paste`
 - `$BROWSER`, `open`, or `xdg-open` for `snip web`
 
+The Debian and Arch packages depend on Git, fzf, and the default GitHub provider CLI. That CLI is
+packaged as `gh` on Debian and `github-cli` on Arch. GitLab support remains optional; install `glab`
+separately when enabling the GitLab provider.
+
 Credentials remain owned by `gh` and `glab`. Sign in with the exact host you configured:
 
 ```sh
@@ -150,16 +154,24 @@ The repository uses only the Go standard library. Tests replace every provider, 
 clipboard, editor, and browser process with isolated fakes.
 
 ```sh
+go fmt ./...
 go test ./...
 go vet ./...
 go test -race ./...
+./scripts/generate-completions.sh
+git diff --exit-code -- completions
 ```
 
-Release builds are described by `.goreleaser.yaml`. The test workflow only tests. Pushing a `v*`
-tag runs the separate release workflow, which publishes checksummed macOS/Linux archives plus
-Debian and Arch packages to that tag's GitHub Release. After the release is available, the workflow
-sends a `snip-release-published` repository dispatch to `wawrzdev/packages`. Its payload identifies
-the source commit, release and checksum asset by immutable IDs and includes the checksum digest.
+Before committing completion changes, run the generator and commit its output. CI runs formatting,
+uncached tests, vet, race tests, and the same completion drift check on Ubuntu, macOS, and Arch Linux.
+It also validates `.goreleaser.yaml` with GoReleaser v2.
+
+Release builds are described by `.goreleaser.yaml`. Pushing a `v*` tag runs the release workflow,
+which publishes checksummed macOS/Linux archives plus Debian and Arch packages to that tag's GitHub
+Release. Archives and native packages include bash, zsh, and fish completions. After the release is
+available, the workflow sends a `snip-release-published` repository dispatch to
+`wawrzdev/packages`. Its payload identifies the source commit, release and checksum asset by
+immutable IDs and includes the checksum digest.
 
 The release repository must define `PACKAGES_DISPATCH_TOKEN` as a fine-grained personal access
 token scoped only to `wawrzdev/packages`, with repository Contents write permission (required by

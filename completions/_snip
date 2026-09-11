@@ -1,0 +1,26 @@
+#compdef snip
+_snip() {
+  local command word command_index i
+  for (( i = 2; i <= ${#words}; i++ )); do
+    word="${words[i]}"
+    case "$word" in
+      list|get|new|paste|file|web|completion|version|help)
+        command="$word"; command_index=$i; break;;
+    esac
+  done
+  if [[ -n "$command_index" ]]; then
+    words=("${(@)words[1,$((command_index-1))]}" "${(@)words[$((command_index+1)),-1]}")
+    (( CURRENT > command_index )) && (( CURRENT-- ))
+  fi
+  case "$command" in
+    get) _arguments '--github[use GitHub]' '--gitlab[use GitLab]' '--update[update existing clones]' '--all[operate on all items]' '*:name, URL, or ID:' ;;
+    new|paste) _arguments '--github[use GitHub]' '--gitlab[use GitLab]' '--description[set description]:description:' '--public[make public]' '1:filename:' ;;
+    file) _arguments '--github[use GitHub]' '--gitlab[use GitLab]' '--description[set description]:description:' '--public[make public]' '1:file:_files' ;;
+    list) _arguments '--github[use GitHub]' '--gitlab[use GitLab]' ;;
+    web) _arguments '--github[use GitHub]' '--gitlab[use GitLab]' '*:query:' ;;
+    completion) _values shell bash zsh fish ;;
+    version|help) _message 'no more arguments' ;;
+    *) _arguments '--help[show help]' '--version[show version]' '--github[use GitHub]' '--gitlab[use GitLab]' '1:command:(list get new paste file web completion version help)' '*:query:' ;;
+  esac
+}
+_snip "$@"

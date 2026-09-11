@@ -310,6 +310,7 @@ func TestFzfCandidateFieldsCannotForgeRecords(t *testing.T) {
 }
 
 func TestContextualCompletions(t *testing.T) {
+	completionFiles := map[string]string{"bash": "snip.bash", "zsh": "_snip", "fish": "snip.fish"}
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		app, out, _ := newTestApp(t, &fakeRunner{})
 		if err := app.Run(context.Background(), []string{"completion", shell}); err != nil {
@@ -330,6 +331,26 @@ func TestContextualCompletions(t *testing.T) {
 				t.Errorf("%s advertises %s", shell, forbidden)
 			}
 		}
+		checkedIn, err := os.ReadFile(filepath.Join("..", "..", "completions", completionFiles[shell]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(checkedIn) != text {
+			t.Errorf("%s completion is stale; run scripts/generate-completions.sh", shell)
+		}
+	}
+}
+
+func TestCIWorkflowContract(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "test.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(workflow)
+	for _, required := range []string{"ubuntu-latest", "macos-latest", "archlinux:base-devel", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "gofmt -l", "generate-completions.sh", "go test -count=1", "go vet ./...", "go test -race -count=1", "goreleaser/goreleaser-action@v6", "version: '~> v2'", "args: check"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("CI workflow omits %q", required)
+		}
 	}
 }
 
@@ -339,7 +360,7 @@ func TestReleaseWorkflowPublishesTaggedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(workflow)
-	for _, required := range []string{"tags:", "'v*'", "contents: write", "goreleaser-action@v6", "release --clean", "PACKAGES_DISPATCH_TOKEN", "getReleaseByTag", "createDispatchEvent", "repo: 'packages'", "event_type: 'snip-release-published'", "source_commit: context.sha", "release_id: String(release.id)", "checksums_asset_id: String(checksums.id)", "checksums_digest: checksums.digest", "checksums.txt", ".deb", ".pkg.tar.zst"} {
+	for _, required := range []string{"tags:", "'v*'", "contents: write", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "goreleaser-action@v6", "version: '~> v2'", "release --clean", "actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea", "PACKAGES_DISPATCH_TOKEN", "getReleaseByTag", "createDispatchEvent", "repo: 'packages'", "event_type: 'snip-release-published'", "source_commit: context.sha", "release_id: String(release.id)", "checksums_asset_id: String(checksums.id)", "checksums_digest: checksums.digest", "checksums.txt", ".deb", ".pkg.tar.zst"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("release workflow omits %q", required)
 		}
@@ -351,7 +372,7 @@ func TestReleaseWorkflowPublishesTaggedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"darwin", "linux", "amd64", "arm64", "checksums.txt", "deb", "archlinux"} {
+	for _, required := range []string{"darwin", "linux", "amd64", "arm64", "-trimpath", "checksums.txt", "deb", "archlinux", "maintainer: wawrzdev", "dependencies:", "github-cli", "completions/*", "/usr/share/bash-completion/completions/snip", "/usr/share/zsh/site-functions/_snip", "/usr/share/fish/vendor_completions.d/snip.fish"} {
 		if !strings.Contains(string(releaseConfig), required) {
 			t.Errorf("release config omits %q", required)
 		}
