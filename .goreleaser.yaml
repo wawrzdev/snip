@@ -59,6 +59,8 @@ nfpms:
           - git
           - fzf
           - github-cli
+    archlinux:
+      packager: Kris Wawrzyniak <wawrz.dev@gmail.com>
     contents:
       - src: completions/_snip
         dst: /usr/share/zsh/site-functions/_snip

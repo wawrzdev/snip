@@ -360,7 +360,7 @@ func TestReleaseWorkflowPublishesTaggedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(workflow)
-	for _, required := range []string{"tags:", "'v*'", "contents: write", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "goreleaser-action@v6", "version: '~> v2'", "release --clean", "actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea", "PACKAGES_DISPATCH_TOKEN", "getReleaseByTag", "createDispatchEvent", "repo: 'packages'", "event_type: 'snip-release-published'", "source_commit: context.sha", "release_id: String(release.id)", "checksums_asset_id: String(checksums.id)", "checksums_digest: checksums.digest", "checksums.txt", ".deb", ".pkg.tar.zst"} {
+	for _, required := range []string{"tags:", "'v*'", "contents: write", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "goreleaser-action@v6", "version: '~> v2'", "release --clean", "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3", "PACKAGES_DISPATCH_TOKEN", "getReleaseByTag", "createDispatchEvent", "repo: 'packages'", "event_type: 'snip-release-published'", "source_commit: context.sha", "release_id: String(release.id)", "checksums_asset_id: String(checksums.id)", "checksums_digest: checksums.digest", "checksums.txt", ".deb", ".pkg.tar.zst"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("release workflow omits %q", required)
 		}
