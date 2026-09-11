@@ -372,7 +372,7 @@ func TestReleaseWorkflowPublishesTaggedArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"darwin", "linux", "amd64", "arm64", "-trimpath", "checksums.txt", "deb", "archlinux", "maintainer: wawrzdev", "dependencies:", "github-cli", "completions/*", "/usr/share/bash-completion/completions/snip", "/usr/share/zsh/site-functions/_snip", "/usr/share/fish/vendor_completions.d/snip.fish"} {
+	for _, required := range []string{"darwin", "linux", "amd64", "arm64", "-trimpath", "checksums.txt", "deb", "archlinux", "maintainer: Kris Wawrzyniak <wawrz.dev@gmail.com>", "dependencies:", "github-cli", "completions/*", "/usr/share/bash-completion/completions/snip", "/usr/share/zsh/site-functions/_snip", "/usr/share/fish/vendor_completions.d/snip.fish"} {
 		if !strings.Contains(string(releaseConfig), required) {
 			t.Errorf("release config omits %q", required)
 		}

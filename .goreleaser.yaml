@@ -42,7 +42,7 @@ nfpms:
     package_name: snip
     vendor: wawrzdev
     homepage: https://github.com/wawrzdev/snip
-    maintainer: wawrzdev
+    maintainer: Kris Wawrzyniak <wawrz.dev@gmail.com>
     description: Manage GitHub gists and account-level GitLab snippets as local Git clones.
     license: MIT
     formats:
