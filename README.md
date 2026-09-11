@@ -150,8 +150,9 @@ Generate completion definitions with `snip completion bash`, `snip completion zs
 
 ## Development
 
-The repository uses only the Go standard library. Tests replace every provider, Git, fzf,
-clipboard, editor, and browser process with isolated fakes.
+The production binary uses only the Go standard library. Tests use `github.com/creack/pty` for
+cross-platform terminal coverage and replace every provider, Git, fzf, clipboard, editor, and
+browser process with isolated fakes.
 
 ```sh
 go fmt ./...
@@ -162,9 +163,10 @@ go test -race ./...
 git diff --exit-code -- completions
 ```
 
-Before committing completion changes, run the generator and commit its output. CI runs formatting,
-uncached tests, vet, race tests, and the same completion drift check on Ubuntu, macOS, and Arch Linux.
-It also validates `.goreleaser.yaml` with GoReleaser v2.
+Before committing completion changes, run the generator and commit its output. The Go suite compares
+all checked-in completions byte-for-byte with runtime output. CI runs that suite alongside formatting,
+vet, and race tests on Ubuntu, macOS, and Arch Linux. It also validates `.goreleaser.yaml` with
+GoReleaser v2.
 
 Release builds are described by `.goreleaser.yaml`. Pushing a `v*` tag runs the release workflow,
 which publishes checksummed macOS/Linux archives plus Debian and Arch packages to that tag's GitHub

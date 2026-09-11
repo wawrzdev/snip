@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/creack/pty"
 )
 
 func TestWrapperCapturedStdoutStillUsesFzf(t *testing.T) {
@@ -33,10 +35,11 @@ func TestWrapperCapturedStdoutStillUsesFzf(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
-	input, err := openPTYForTest()
+	master, input, err := pty.Open()
 	if err != nil {
-		t.Skipf("PTY unavailable: %v", err)
+		t.Fatal(err)
 	}
+	defer master.Close()
 	defer input.Close()
 	captured, errOut := new(bytes.Buffer), new(bytes.Buffer)
 	app := NewApp(input, captured, errOut)
@@ -347,10 +350,13 @@ func TestCIWorkflowContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(workflow)
-	for _, required := range []string{"ubuntu-latest", "macos-latest", "archlinux:base-devel", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "gofmt -l", "generate-completions.sh", "go test -count=1", "go vet ./...", "go test -race -count=1", "goreleaser/goreleaser-action@v6", "version: '~> v2'", "args: check"} {
+	for _, required := range []string{"ubuntu-latest", "macos-latest", "archlinux:base-devel", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "gofmt -l", "Test, including completion drift", "go test -count=1", "go vet ./...", "go test -race -count=1", "goreleaser/goreleaser-action@v6", "version: '~> v2'", "args: check"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("CI workflow omits %q", required)
 		}
+	}
+	if strings.Contains(text, "generate-completions.sh") {
+		t.Error("CI must rely on the Go drift test without mutating the checkout")
 	}
 }
 
