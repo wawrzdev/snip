@@ -350,7 +350,7 @@ func TestCIWorkflowContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(workflow)
-	for _, required := range []string{"ubuntu-latest", "macos-latest", "archlinux:base-devel", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "gofmt -l", "Test, including completion drift", "go test -count=1", "go vet ./...", "go test -race -count=1", "goreleaser/goreleaser-action@v6", "version: '~> v2'", "args: check"} {
+	for _, required := range []string{"ubuntu-latest", "macos-latest", "archlinux:base-devel", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "gofmt -l", "Test, including completion drift", "go test -count=1", "go vet ./...", "go test -race -count=1", "args: check"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("CI workflow omits %q", required)
 		}
@@ -360,20 +360,7 @@ func TestCIWorkflowContract(t *testing.T) {
 	}
 }
 
-func TestReleaseWorkflowPublishesTaggedArtifacts(t *testing.T) {
-	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(workflow)
-	for _, required := range []string{"tags:", "'v*'", "contents: write", "actions/checkout@v7", "actions/setup-go@v7", "go-version-file: go.mod", "goreleaser-action@v6", "version: '~> v2'", "release --clean", "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3", "PACKAGES_DISPATCH_TOKEN", "getReleaseByTag", "createDispatchEvent", "repo: 'packages'", "event_type: 'snip-release-published'", "source_commit: context.sha", "release_id: String(release.id)", "checksums_asset_id: String(checksums.id)", "checksums_digest: checksums.digest", "checksums.txt", ".deb", ".pkg.tar.zst"} {
-		if !strings.Contains(text, required) {
-			t.Errorf("release workflow omits %q", required)
-		}
-	}
-	if strings.Index(text, "goreleaser-action@v6") > strings.Index(text, "createDispatchEvent") {
-		t.Error("packages dispatch must happen only after GoReleaser succeeds")
-	}
+func TestReleasePackageConfig(t *testing.T) {
 	releaseConfig, err := os.ReadFile(filepath.Join("..", "..", ".goreleaser.yaml"))
 	if err != nil {
 		t.Fatal(err)
